@@ -13,8 +13,8 @@
 #       Create an html file that show the directory listing structure of an s3 bucket.
 #
 # Première : 2024-12-30
-# Révision : 2025-01-02
-# Version : 1.0.1
+# Révision : 2025-01-06
+# Version : 1.0.2
 # ---------------------------------------------------------
 
 # Optional, set your defaults here :
@@ -46,6 +46,7 @@ import sys
 import argparse
 import re
 import boto3
+from botocore.exceptions import ClientError
 try:
     import tkinter as tk
     from tkinter import messagebox
@@ -53,13 +54,21 @@ try:
     tkinter_available = True
 except ImportError:
     tkinter_available = False
-    print("GUI mode is not available, because tkinter is missing. Use CLI options: ye3sld --help")
 
-# global variables
-output_html_s3_exist = False
+# check if file exist
+def check_s3_file_exists(s3, bucket_name, output_html_s3):
+
+    try:
+        s3.head_object(Bucket=bucket_name, Key=output_html_s3)
+        return True
+    except ClientError as e:
+        if e.response['Error']['Code'] == '404':
+            return False
+        else:
+            raise
 
 # Function to list files in the S3 bucket
-def list_files(s3_client, bucket_name, output_html_s3, prefix, regex_exclude):
+def list_files(s3, bucket_name, output_html_s3, prefix, regex_exclude):
     
     all_files = []
     continuation_token = None
@@ -70,13 +79,13 @@ def list_files(s3_client, bucket_name, output_html_s3, prefix, regex_exclude):
 
     while True:
         if continuation_token:
-            response = s3_client.list_objects_v2(
+            response = s3.list_objects_v2(
                 Bucket=bucket_name,
                 Prefix=prefix,
                 ContinuationToken=continuation_token
             )
         else:
-            response = s3_client.list_objects_v2(Bucket=bucket_name, Prefix=prefix)
+            response = s3.list_objects_v2(Bucket=bucket_name, Prefix=prefix)
 
         if 'Contents' in response:
             for obj in response['Contents']:
@@ -85,10 +94,6 @@ def list_files(s3_client, bucket_name, output_html_s3, prefix, regex_exclude):
                 if not any(re.search(pattern, key) for pattern in patterns):
                     all_files.append(key)
                     
-                if key == output_html_s3:
-                    global output_html_s3_exist
-                    output_html_s3_exist = True
-                    
         # Check if there are more files to retrieve
         if response.get('IsTruncated'):
             continuation_token = response.get('NextContinuationToken')
@@ -96,6 +101,17 @@ def list_files(s3_client, bucket_name, output_html_s3, prefix, regex_exclude):
             break
 
     return all_files
+
+def get_full_path(output_html_local):
+    
+    current_directory = os.getcwd()
+    
+    if os.path.isabs(output_html_local):
+        full_path = output_html_local 
+    else:
+        full_path = os.path.join(current_directory, output_html_local)
+    
+    return full_path
 
 # Function to generate HTML and upload to S3
 def generate_html(service_name, endpoint_url, aws_access_key_id, aws_secret_access_key, region_name, bucket_name, prefix, output_html_local, output_html_s3, href_base_url, regex_exclude, overwrite, upload, cli):
@@ -117,23 +133,22 @@ def generate_html(service_name, endpoint_url, aws_access_key_id, aws_secret_acce
             missing_args.append(arg_name)
     
     if missing_args:
-        error = f'Missing required arguments: {", ".join(missing_args)}'
+        error = f'Missing required arguments : {", ".join(missing_args)}'
         if not cli:
             messagebox.showerror("Error", error)
         raise ValueError(error)
-
-    # To check later if the s3 file already exists         
-    global output_html_s3_exist
+    
+    output_html_local = get_full_path(output_html_local)
     
     # Check if the local file already exists
     if os.path.exists(output_html_local) and not overwrite:
-        message_exist_local=f"{output_html_local} already exists locally. Operation canceled."
+        message_exist_local=f"Operation canceled : {output_html_local} already exists locally."
         if not cli:
             response = messagebox.askyesno("File Exists", f"{output_html_local} already exists locally. Do you want to overwrite it?")
             if not response:
                 return message_exist_local
         else:
-            return message_exist_local
+            return message_exist_local + "\nHint ? Add this option to overwrite : --overwrite"
 
     try:
         # Start building the HTML file
@@ -317,24 +332,24 @@ def generate_html(service_name, endpoint_url, aws_access_key_id, aws_secret_acce
         
         # Upload the HTML file to your S3 bucket
         if upload:
-            if output_html_s3_exist and not overwrite:
-                message_exist_s3=f"{output_html_s3} already exists in bucket. Upload canceled."
+            if check_s3_file_exists(s3, bucket_name, output_html_s3) and not overwrite:
+                message_exist_s3=f"Upload canceled : {output_html_s3} already exists in bucket."
                 if not cli:
                     response = messagebox.askyesno("File Exists", f"{output_html_s3} already exists in the bucket. Do you want to overwrite it?")
                     if response:
                         s3.upload_file(output_html_local, bucket_name, output_html_s3)
-                        return f"HTML file created {output_html_local} and uploaded: {output_html_s3}"
+                        return f"Success : HTML file created {output_html_local} and uploaded: {output_html_s3}"
                     else:
                         return message_exist_s3
                 else:
-                    return message_exist_s3
+                    return message_exist_s3 + "\nHint ? Add this option to overwrite : --overwrite"
             else:
                 s3.upload_file(output_html_local, bucket_name, output_html_s3)
-                return f"HTML file created {output_html_local} and uploaded: {output_html_s3}"
+                return f"Success : HTML file created {output_html_local} and uploaded: {output_html_s3}"
 
 
         # Return success message
-        return f"HTML file created: {output_html_local}"
+        return f"Success : HTML file created: {output_html_local}"
 
     except Exception as e:
         return str(e)
@@ -356,9 +371,9 @@ def output_file():
 # CLI mode
 def cli_mode():
 
-    parser = argparse.ArgumentParser(description='Generate HTML from S3 bucket files.')
+    parser = argparse.ArgumentParser(description='Create an html file that show the directory listing structure of an s3 bucket.')
 
-    parser.add_argument('--service_name', default=default_service_name, help='Service name')
+    parser.add_argument('--service_name', default=default_service_name, help='Service name (default: s3)')
     parser.add_argument('--endpoint_url', default=default_endpoint_url,  help='S3 endpoint URL')
     parser.add_argument('--aws_access_key_id', default=default_aws_access_key_id, help='AWS Access Key ID')
     parser.add_argument('--aws_secret_access_key', default=default_aws_secret_access_key, help='AWS Secret Access Key')
@@ -498,6 +513,7 @@ def main():
         if tkinter_available:
             gui_mode()
         else:
+            print("GUI mode is not available, because tkinter is missing.\nUse CLI options: ye3sld --help")
             sys.exit(1)
 
 if __name__ == "__main__":

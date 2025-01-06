@@ -64,9 +64,20 @@ To view the HTML code [Click here](https://raw.githubusercontent.com/palw3ey/ye3
 
 | name | version |
 | :- |:- |
-|ye3sld | 1.0.1 |
+|ye3sld | 1.0.2 |
 
 # Changelog
+
+## [1.0.2] - 2025-01-06
+### Changed
+- Success and error message
+- Help message in cli mode
+- Missing tkinter message displayed in main()
+
+### Added
+- New function "check_s3_file_exists" to detect if s3 output file already exists
+- New function "get_full_path" to get fullpath of the local output file
+- Hint in cli mode
 
 ## [1.0.1] - 2025-01-02
 ### Fixed
