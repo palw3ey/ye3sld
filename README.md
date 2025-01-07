@@ -64,9 +64,16 @@ To view the HTML code [Click here](https://raw.githubusercontent.com/palw3ey/ye3
 
 | name | version |
 | :- |:- |
-|ye3sld | 1.0.2 |
+|ye3sld | 1.0.3 |
 
 # Changelog
+
+## [1.0.3] - 2025-01-07
+### Added
+- Hide the traceback, to avoid overwhelming the user with technical details
+
+### Fixed
+- args.cli replaced with True in cli_mode() function when calling generate_html() function
 
 ## [1.0.2] - 2025-01-06
 ### Changed

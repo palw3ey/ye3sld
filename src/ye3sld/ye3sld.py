@@ -13,8 +13,8 @@
 #       Create an html file that show the directory listing structure of an s3 bucket.
 #
 # Première : 2024-12-30
-# Révision : 2025-01-06
-# Version : 1.0.2
+# Révision : 2025-01-07
+# Version : 1.0.3
 # ---------------------------------------------------------
 
 # Optional, set your defaults here :
@@ -43,6 +43,7 @@ default_upload='false'
 # Import libraries
 import os
 import sys
+sys.tracebacklimit = 0
 import argparse
 import re
 import boto3
@@ -390,7 +391,7 @@ def cli_mode():
 
     args = parser.parse_args()
 
-    result = generate_html(args.service_name, args.endpoint_url, args.aws_access_key_id, args.aws_secret_access_key, args.region_name, args.bucket_name, args.prefix, args.output_html_local, args.output_html_s3, args.href_base_url, args.exclude, args.overwrite, args.upload, args.cli)
+    result = generate_html(args.service_name, args.endpoint_url, args.aws_access_key_id, args.aws_secret_access_key, args.region_name, args.bucket_name, args.prefix, args.output_html_local, args.output_html_s3, args.href_base_url, args.exclude, args.overwrite, args.upload, True)
     print(result)
 
 # GUI mode
