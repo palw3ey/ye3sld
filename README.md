@@ -64,9 +64,20 @@ To view the HTML code [Click here](https://raw.githubusercontent.com/palw3ey/ye3
 
 | name | version |
 | :- |:- |
-|ye3sld | 1.0.3 |
+|ye3sld | 1.0.4 |
 
 # Changelog
+
+## [1.0.4] - 2025-01-12
+### Added
+- Show size and last modification when clicking on a line or on the page title
+- Add generation date in the html meta
+- ttk style
+
+### Changed
+- Refactoring code to conform to PEP 8, improve readability, maintainability, and consistency. Passed conformity checks with Flake8 and Pylint (rated at 10.00/10).
+- Changed some exception handling 
+- All DEFAULT can now be use for GUI and CLI
 
 ## [1.0.3] - 2025-01-07
 ### Added

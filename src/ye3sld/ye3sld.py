@@ -1,63 +1,69 @@
 
-# ---------------------------------------------------------
-# Titre : ye3sld
-# Auteur : palw3ey
-# Mainteneur : palw3ey
-# Licence : MIT
-# Pays : France
-# Email : palw3ey@gmail.com
-# Site : https://github.com/palw3ey/ye3sld
-#
-# Description : 
-#       Créer un fichier HTML qui affiche la structure de la liste des dossiers d'un bucket S3.
-#       Create an html file that show the directory listing structure of an s3 bucket.
-#
-# Première : 2024-12-30
-# Révision : 2025-01-07
-# Version : 1.0.3
-# ---------------------------------------------------------
+""" --------------------------------------------------------------------------
+Titre : ye3sld
+Auteur : palw3ey
+Mainteneur : palw3ey
+Licence : MIT
+Pays : France
+Email : palw3ey@gmail.com
+Site : https://github.com/palw3ey/ye3sld
 
-# Optional, set your defaults here :
+Description :
 
-default_service_name='s3'
-default_endpoint_url=''
-default_aws_access_key_id=''
-default_aws_secret_access_key=''
-default_region_name=''
-default_bucket_name=''
-default_prefix=''
-default_output_html_local='index-sld.html'
-default_output_html_s3='index-sld.html'
-default_href_base_url=''
-default_regex_exclude=''
-# affect gui only :
-default_overwrite='false'
-default_upload='false'
+Créer un fichier HTML
+  qui affiche la structure de la liste des dossiers d'un bucket S3.
 
-# ---------------------------------------------------------
-# You can also modify the code below this line,
-# if you are absolutely sure of what you are doing.
-# Modifications may lead to unexpected behavior or errors.
-# ---------------------------------------------------------
+Create an html file
+  that show the directory listing structure of an s3 bucket.
+
+Première : 2024-12-30
+Révision : 2025-01-12
+Version : 1.0.4
+-------------------------------------------------------------------------- """
 
 # Import libraries
 import os
 import sys
-sys.tracebacklimit = 0
 import argparse
 import re
-import boto3
-from botocore.exceptions import ClientError
+from datetime import datetime
+try:
+    import boto3
+    from botocore.exceptions import BotoCoreError, ClientError
+    BOTO3_AVAILABLE = True
+except ImportError:
+    BOTO3_AVAILABLE = False
 try:
     import tkinter as tk
+    from tkinter import ttk
     from tkinter import messagebox
     from tkinter import filedialog
-    tkinter_available = True
+    TKINTER_AVAILABLE = True
 except ImportError:
-    tkinter_available = False
+    TKINTER_AVAILABLE = False
 
-# check if file exist
+# hide any traceback information when an exception occurs
+sys.tracebacklimit = 0
+
+# Optional, set your defaults here :
+DEFAULT_SERVICE_NAME = 's3'
+DEFAULT_ENDPOINT_URL = ''
+DEFAULT_AWS_ACCESS_KEY_ID = ''
+DEFAULT_AWS_SECRET_ACCESS_KEY = ''
+DEFAULT_REGION_NAME = ''
+DEFAULT_BUCKET_NAME = ''
+DEFAULT_PREFIX = ''
+DEFAULT_OUTPUT_HTML_LOCAL = 'index-sld.html'
+DEFAULT_OUTPUT_HTML_S3 = 'index-sld.html'
+DEFAULT_HREF_BASE_URL = ''
+DEFAULT_REGEX_EXCLUDE = ''
+DEFAULT_OVERWRITE = False
+DEFAULT_UPLOAD = False
+DEFAULT_CLI = False
+
+
 def check_s3_file_exists(s3, bucket_name, output_html_s3):
+    """ Check if s3 file exists """
 
     try:
         s3.head_object(Bucket=bucket_name, Key=output_html_s3)
@@ -65,18 +71,22 @@ def check_s3_file_exists(s3, bucket_name, output_html_s3):
     except ClientError as e:
         if e.response['Error']['Code'] == '404':
             return False
-        else:
-            raise
+        raise
 
-# Function to list files in the S3 bucket
-def list_files(s3, bucket_name, output_html_s3, prefix, regex_exclude):
-    
+
+def list_files(s3, bucket_name, prefix, regex_exclude):
+    """ List files in the S3 bucket """
+
     all_files = []
     continuation_token = None
-    
-    # regex_exclude : split by commas, and strip whitespace
+
+    # split by commas, and strip whitespace
     patterns_spit = regex_exclude.split(',')
-    patterns = [pattern.strip() for pattern in patterns_spit if pattern.strip()]
+    patterns = [
+        pattern.strip()
+        for pattern in patterns_spit
+        if pattern.strip()
+    ]
 
     while True:
         if continuation_token:
@@ -91,10 +101,12 @@ def list_files(s3, bucket_name, output_html_s3, prefix, regex_exclude):
         if 'Contents' in response:
             for obj in response['Contents']:
                 key = obj['Key']
+                size = obj['Size']
+                last_modified = obj['LastModified']
                 # Check if the key matches any of the exclude patterns
                 if not any(re.search(pattern, key) for pattern in patterns):
-                    all_files.append(key)
-                    
+                    all_files.append(f"{key}?{size}?{last_modified}")
+
         # Check if there are more files to retrieve
         if response.get('IsTruncated'):
             continuation_token = response.get('NextContinuationToken')
@@ -103,63 +115,117 @@ def list_files(s3, bucket_name, output_html_s3, prefix, regex_exclude):
 
     return all_files
 
+
 def get_full_path(output_html_local):
-    
-    current_directory = os.getcwd()
-    
+    """ Get full path of local file """
+
     if os.path.isabs(output_html_local):
-        full_path = output_html_local 
+        full_path = output_html_local
     else:
-        full_path = os.path.join(current_directory, output_html_local)
-    
+        full_path = os.path.join(os.getcwd(), output_html_local)
+
     return full_path
 
-# Function to generate HTML and upload to S3
-def generate_html(service_name, endpoint_url, aws_access_key_id, aws_secret_access_key, region_name, bucket_name, prefix, output_html_local, output_html_s3, href_base_url, regex_exclude, overwrite, upload, cli):
-    
-    # required arguments
+
+def finalization(s3, params):
+    """ Upload and show final message """
+
+    if params["upload"]:
+        if not params["overwrite"] and check_s3_file_exists(
+            s3,
+            params["bucket_name"],
+            params["output_html_s3"]
+        ):
+
+            message_exist_s3 = (
+                f"Upload canceled : {params["output_html_s3"]} "
+                "already exists in bucket."
+            )
+            if not params["cli"]:
+                response = messagebox.askyesno(
+                    "File Exists", f"{params["output_html_s3"]} "
+                    "already exists in the bucket. "
+                    "Do you want to overwrite it?"
+                )
+                if not response:
+                    return message_exist_s3
+            else:
+                return (
+                    message_exist_s3 +
+                    "\nHint ? Add this option to overwrite : --overwrite"
+                )
+
+        s3.upload_file(
+            params["output_html_local"],
+            params["bucket_name"],
+            params["output_html_s3"]
+        )
+        message_upload = f" and uploaded: {params["output_html_s3"]}"
+    else:
+        message_upload = ""
+
+    return (
+        f"Success : HTML file created: "
+        f"{params["output_html_local"]}{message_upload}"
+    )
+
+
+def generate_html(params):
+    """ Generate HTML """
+
     required_args = {
-        'Service name': service_name,
-        'Endpoint URL': endpoint_url,
-        'Access key ID': aws_access_key_id,
-        'Secret access key': aws_secret_access_key,
-        'Bucket name': bucket_name,
-        'Local output HTML file': output_html_local
+        'Service name': params["service_name"],
+        'Endpoint URL': params["endpoint_url"],
+        'Access key ID': params["aws_access_key_id"],
+        'Secret access key': params["aws_secret_access_key"],
+        'Bucket name': params["bucket_name"],
+        'Local output HTML file': params["output_html_local"]
     }
- 
+
     missing_args = []
-    
+
     for arg_name, arg_value in required_args.items():
         if arg_value is None or arg_value == '':
             missing_args.append(arg_name)
-    
+
     if missing_args:
-        error = f'Missing required arguments : {", ".join(missing_args)}'
-        if not cli:
-            messagebox.showerror("Error", error)
-        raise ValueError(error)
-    
-    output_html_local = get_full_path(output_html_local)
-    
+        return f'Missing required arguments : {", ".join(missing_args)}'
+
+    params["output_html_local"] = get_full_path(params["output_html_local"])
+
     # Check if the local file already exists
-    if os.path.exists(output_html_local) and not overwrite:
-        message_exist_local=f"Operation canceled : {output_html_local} already exists locally."
-        if not cli:
-            response = messagebox.askyesno("File Exists", f"{output_html_local} already exists locally. Do you want to overwrite it?")
+    if os.path.exists(params["output_html_local"]) and not params["overwrite"]:
+        message_exist_local = (
+            f"Operation canceled : {params["output_html_local"]} "
+            "already exists locally."
+        )
+        if not params["cli"]:
+            response = messagebox.askyesno(
+                "File Exists",
+                f"{params["output_html_local"]} already exists locally. "
+                "Do you want to overwrite it?"
+            )
             if not response:
                 return message_exist_local
         else:
-            return message_exist_local + "\nHint ? Add this option to overwrite : --overwrite"
+            return (
+                message_exist_local +
+                "\nHint ? Add this option to overwrite : --overwrite"
+            )
 
     try:
+
+        current_date = datetime.now().isoformat()
+
         # Start building the HTML file
-        with open(output_html_local, 'w', encoding='utf-8') as f:
+        with open(params["output_html_local"], 'w', encoding='utf-8') as f:
             f.write("""<!DOCTYPE html>
 <html lang="fr">
     <head>
         <meta charset="UTF-8">
         <meta name="viewport" content="width=device-width, initial-scale=1.0">
         <meta name="generator" content="ye3sld">
+        <meta name='generation-date' content='""" + current_date + """'>
         <title>SLD : S3</title>
         <style>
 
@@ -172,99 +238,116 @@ def generate_html(service_name, endpoint_url, aws_access_key_id, aws_secret_acce
                 transition: background-color 0.3s, color 0.3s;
                 word-wrap: break-word;
             }
-            
+
             h1 {
-                margin: 0; 
+                margin: 0;
             }
-            
+
             #caption {
-                display: block; 
-                font-size: 0.7em; 
+                display: block;
+                font-size: 0.7em;
                 color: gray;
-                margin-top: 0.2em; 
+                margin-top: 0.2em;
             }
-            
+
             #s3output {
                 display: none;
             }
-            
+
+            .info {
+                display: none;
+                margin-left: 10px;
+                font-size: 0.9em;
+                color: #789;
+            }
+
             a {
-                color: #ecf0f1; 
-                text-decoration: none; 
-                border-radius: 5px; 
+                color: #ecf0f1;
+                text-decoration: none;
+                border-radius: 5px;
                 transition: background-color 0.3s, color 0.3s;
                 padding: 2px 5px 2px 5px;
             }
-            
+
             a:hover {
                 background-color: #204e8a;
                 color: #fff;
             }
-            
+
             ul {
                 list-style-type: none;
                 padding-left: 0px;
             }
-            
+
             ul ul {
                 padding-left: 1em;
             }
 
             li {
-                border: 1px solid #34495e; 
-                border-radius: 5px; 
+                border: 1px solid #34495e;
+                border-radius: 5px;
                 padding: 2px 5px 2px 5px;
                 margin: 5px 0;
-                transition: box-shadow 0.3s; 
+                transition: box-shadow 0.3s;
             }
-            
+
             li:hover {
                 box-shadow: 0 2px 8px 2px rgba(0, 0, 0, 0.7);
             }
-            
+
         </style>
     </head>
     <body>
         <h1 id="title" title="">SLD : S3</h1>
-        <span id="caption">Structure de la liste des dossiers S3<span id="filescount"></span></span>
-        
+        <span id="caption">
+            Structure de la liste des dossiers S3
+            <span id="filescount"></span>
+        </span>
+
         <pre id="s3output">
 """)
 
             # Initialize a session using Boto3
             s3 = boto3.client(
-                service_name=service_name,
-                endpoint_url=endpoint_url,
-                aws_access_key_id=aws_access_key_id,
-                aws_secret_access_key=aws_secret_access_key,
-                region_name=region_name
+                service_name=params["service_name"],
+                endpoint_url=params["endpoint_url"],
+                aws_access_key_id=params["aws_access_key_id"],
+                aws_secret_access_key=params["aws_secret_access_key"],
+                region_name=params["region_name"]
             )
 
-            # List files in the bucket 
-            files = list_files(s3, bucket_name, output_html_s3, prefix, regex_exclude)
-            
-            for file in files:
+            # List files in the bucket
+            for file in list_files(
+                s3,
+                params["bucket_name"],
+                params["prefix"],
+                params["regex_exclude"]
+            ):
                 # Remove the bucket name prefix
-                relative_path = file.replace(f"{bucket_name}/", "", 1)
+                relative_path = file.replace(
+                    f"{params["bucket_name"]}/",
+                    "",
+                    1
+                )
                 # write to the HTML file
                 f.write(relative_path + "\n")
 
             f.write("""        </pre>
         <div id="folder-structure"></div>
         <script>
-        
-            // Get the content of the hidden <pre> that contain the s3 output
-            const preContent = document.getElementById('s3output').textContent;
 
-            // Split the content into an array
+            // Get the content of the hidden <pre>, and split into an array
+            const preContent = document.getElementById('s3output').textContent;
             const paths = preContent.trim().split('\\n');
-            
+
+            // Build the structure
             function buildFolderStructure(paths) {
-            
+
                 const root = {};
 
                 paths.forEach(path => {
-                    const parts = path.split('/').filter(part => part);
+                    const parts = path.split('/')
+                        .filter(part => part && !part.startsWith('?'));
                     let current = root;
 
                     parts.forEach(part => {
@@ -278,20 +361,31 @@ def generate_html(service_name, endpoint_url, aws_access_key_id, aws_secret_acce
                 return root;
             }
 
+            // Create the list
             function createList(structure, basePath = '') {
-            
+
                 const ul = document.createElement('ul');
 
                 for (const key in structure) {
-                
+
+                    const parts = key.split('?');
+
                     const a = document.createElement('a');
-                    const fullPath = `${basePath}/${key}`;
-                    a.textContent = key; 
-                    a.href = encodeURIComponent(fullPath); 
+                    const fullPath = `${basePath}/${parts[0]}`;
+                    a.textContent = parts[0];
+                    a.href = encodeURIComponent(fullPath);
                     a.target = "_blank";
-                    
+
                     const li = document.createElement('li');
                     li.appendChild(a);
+
+                    if (parts[1] !== undefined && parts[2] !== undefined) {
+                        const span = document.createElement('span');
+                        span.className = 'info';
+                        span.textContent = `Size: ${formatBytes(parts[1])} |
+                            Last Modified: ${parts[2]}`;
+                        li.appendChild(span);
+                    }
 
                     // If the current key has children, create a nested list
                     if (Object.keys(structure[key]).length > 0) {
@@ -299,6 +393,7 @@ def generate_html(service_name, endpoint_url, aws_access_key_id, aws_secret_acce
                     }
 
                     ul.appendChild(li);
+
                 }
 
                 return ul;
@@ -307,215 +402,401 @@ def generate_html(service_name, endpoint_url, aws_access_key_id, aws_secret_acce
             const folderStructure = buildFolderStructure(paths);
             const folderList = createList(folderStructure);
 
-            document.getElementById('folder-structure').appendChild(folderList);
-            
-            // The url base to prepend to all href
-            const href_base_url = '""" + href_base_url + """';
+            result = document.getElementById('folder-structure')
+            result.appendChild(folderList);
 
-            // Select all <a> elements inside the <ul>
-            const links = document.querySelectorAll('ul a');
+            // The url base to prepend to all href
+            const href_base_url = '""" + params["href_base_url"] + """';
 
             // Prepend the base to each link's href
-            links.forEach(link => {
+            document.querySelectorAll('ul a').forEach(link => {
                 link.href = href_base_url + link.getAttribute('href');
             });
-            
+
             // Show files count
-            filescount=document.querySelectorAll('li').length-(document.querySelectorAll('ul').length-1)
-            document.getElementById('filescount').innerHTML = ` | Fichiers : ${filescount}`
-            document.getElementById('title').setAttribute('title', `S3 Directory Listing Structure | Files : ${filescount}`)
-        
+            filescount=document.querySelectorAll('li').length - (
+                document.querySelectorAll('ul').length-1
+            );
+            document.getElementById('filescount').innerHTML =
+                ` | Fichiers : ${filescount}`
+            document.getElementById('title').setAttribute(
+                'title',
+                `S3 Directory Listing Structure | Files : ${filescount}`
+            );
+
+            // Converts a size in bytes to a human-readable format
+            function formatBytes(bytes) {
+                if (bytes === 0) return '0 Bytes';
+                const sizes = ['Bytes', 'KB', 'MB', 'GB', 'TB', 'PB'];
+                const i = Math.floor(Math.log(bytes) / Math.log(1024));
+                const formattedSize = (bytes / Math.pow(1024, i)).toFixed(2);
+                return `${formattedSize} ${sizes[i]}`;
+            }
+
+            // Show size and last modified info when click on title
+            document.getElementById('title').onclick = function() {
+                // Find the first <li> element on the page
+                const firstLi = document.querySelector('li');
+                const span = firstLi ? firstLi.querySelector('.info') : null;
+
+                // Determine the current visibility state
+                const shouldShow = span && (span.style.display === 'none' ||
+                    span.style.display === '');
+
+                // Set the display style based on the determined state
+                document.querySelectorAll('li').forEach(li => {
+                    const span = li.querySelector('.info');
+                    if (span) {
+                        span.style.display = shouldShow ? 'inline' : 'none';
+                    }
+                });
+            };
+
+            // Show size and last modified info when click on li
+            result.onclick = function(event) {
+                const li = event.target.closest('li');
+                if (li &&
+                    event.target.tagName !== 'UL' &&
+                    event.target.tagName !== 'A' &&
+                    event.target.tagName !== 'SPAN') {
+
+                    const span = li.querySelector('.info');
+
+                    span.style.display =
+                        (span.style.display === 'none' ||
+                        span.style.display === '') ?
+                        'inline' : 'none';
+                }
+            };
+
         </script>
     </body>
 </html>
 """)
 
-        
-        # Upload the HTML file to your S3 bucket
-        if upload:
-            if check_s3_file_exists(s3, bucket_name, output_html_s3) and not overwrite:
-                message_exist_s3=f"Upload canceled : {output_html_s3} already exists in bucket."
-                if not cli:
-                    response = messagebox.askyesno("File Exists", f"{output_html_s3} already exists in the bucket. Do you want to overwrite it?")
-                    if response:
-                        s3.upload_file(output_html_local, bucket_name, output_html_s3)
-                        return f"Success : HTML file created {output_html_local} and uploaded: {output_html_s3}"
-                    else:
-                        return message_exist_s3
-                else:
-                    return message_exist_s3 + "\nHint ? Add this option to overwrite : --overwrite"
-            else:
-                s3.upload_file(output_html_local, bucket_name, output_html_s3)
-                return f"Success : HTML file created {output_html_local} and uploaded: {output_html_s3}"
+        return finalization(s3, params)
+
+    except (IOError, ValueError, BotoCoreError, ClientError) as e:
+        return f"An error occurred: {str(e)}"
 
 
-        # Return success message
-        return f"Success : HTML file created: {output_html_local}"
+def cli_mode():
+    """ CLI mode """
 
-    except Exception as e:
-        return str(e)
-
-def output_file():
-    # Open the file save dialog
-    file_path = filedialog.asksaveasfilename(
-        title="Output file",
-        defaultextension=".html",
-        filetypes=[("HTML files", "*.html"), ("All files", "*.*")]
+    parser = argparse.ArgumentParser(
+        description='Create an HTML file that shows the directory listing '
+        'structure of an S3 bucket.'
     )
 
-    # Check if a file path was selected
-    if file_path:
-        # Clear the entry box and update it with the selected file path
-        entry_output_html_local.delete(0, tk.END)
-        entry_output_html_local.insert(0, file_path)
-        
-# CLI mode
-def cli_mode():
-
-    parser = argparse.ArgumentParser(description='Create an html file that show the directory listing structure of an s3 bucket.')
-
-    parser.add_argument('--service_name', default=default_service_name, help='Service name (default: s3)')
-    parser.add_argument('--endpoint_url', default=default_endpoint_url,  help='S3 endpoint URL')
-    parser.add_argument('--aws_access_key_id', default=default_aws_access_key_id, help='AWS Access Key ID')
-    parser.add_argument('--aws_secret_access_key', default=default_aws_secret_access_key, help='AWS Secret Access Key')
-    parser.add_argument('--region_name', default=default_region_name, help='AWS Region')
-    parser.add_argument('--bucket_name', default=default_bucket_name, help='S3 Bucket Name')
-    parser.add_argument('--prefix', default=default_prefix, help='S3 prefix')
-    parser.add_argument('--output_html_local', default=default_output_html_local, help='Local Output HTML file name')
-    parser.add_argument('--output_html_s3', default=default_output_html_s3, help='S3 Output HTML file name')
-    parser.add_argument('--href_base_url', default=default_href_base_url, help='URL to prepend to links')
-    parser.add_argument('--exclude', default=default_regex_exclude, help='Regex exclude patterns')
-    parser.add_argument('--overwrite', action='store_true', help='Overwrite if file exist')
-    parser.add_argument('--upload', action='store_true', help='Upload HTML file to bucket')
-    parser.add_argument('--cli', action='store_true', help='Use cli mode')
+    parser.add_argument(
+        '--service_name',
+        default=DEFAULT_SERVICE_NAME,
+        help='Service name (default: s3)'
+    )
+    parser.add_argument(
+        '--endpoint_url',
+        default=DEFAULT_ENDPOINT_URL,
+        help='S3 endpoint URL'
+    )
+    parser.add_argument(
+        '--aws_access_key_id',
+        default=DEFAULT_AWS_ACCESS_KEY_ID,
+        help='AWS Access Key ID'
+    )
+    parser.add_argument(
+        '--aws_secret_access_key',
+        default=DEFAULT_AWS_SECRET_ACCESS_KEY,
+        help='AWS Secret Access Key'
+    )
+    parser.add_argument(
+        '--region_name',
+        default=DEFAULT_REGION_NAME,
+        help='AWS Region'
+    )
+    parser.add_argument(
+        '--bucket_name',
+        default=DEFAULT_BUCKET_NAME,
+        help='S3 Bucket Name'
+    )
+    parser.add_argument(
+        '--prefix',
+        default=DEFAULT_PREFIX,
+        help='S3 prefix'
+    )
+    parser.add_argument(
+        '--output_html_local',
+        default=DEFAULT_OUTPUT_HTML_LOCAL,
+        help='Local Output HTML file name'
+    )
+    parser.add_argument(
+        '--output_html_s3',
+        default=DEFAULT_OUTPUT_HTML_S3,
+        help='S3 Output HTML file name'
+    )
+    parser.add_argument(
+        '--href_base_url',
+        default=DEFAULT_HREF_BASE_URL,
+        help='URL to prepend to links'
+    )
+    parser.add_argument(
+        '--exclude',
+        default=DEFAULT_REGEX_EXCLUDE,
+        help='Regex exclude patterns'
+    )
+    parser.add_argument(
+        '--overwrite',
+        action='store_true',
+        default=DEFAULT_OVERWRITE,
+        help='Overwrite if file exist'
+    )
+    parser.add_argument(
+        '--upload',
+        action='store_true',
+        default=DEFAULT_UPLOAD,
+        help='Upload HTML file to bucket'
+    )
+    parser.add_argument(
+        '--cli',
+        action='store_true',
+        default=DEFAULT_CLI,
+        help='Use cli mode'
+    )
 
     args = parser.parse_args()
 
-    result = generate_html(args.service_name, args.endpoint_url, args.aws_access_key_id, args.aws_secret_access_key, args.region_name, args.bucket_name, args.prefix, args.output_html_local, args.output_html_s3, args.href_base_url, args.exclude, args.overwrite, args.upload, True)
-    print(result)
+    input_data = {
+        "service_name": args.service_name,
+        "endpoint_url": args.endpoint_url,
+        "aws_access_key_id": args.aws_access_key_id,
+        "aws_secret_access_key": args.aws_secret_access_key,
+        "region_name": args.region_name,
+        "bucket_name": args.bucket_name,
+        "prefix": args.prefix,
+        "output_html_local": args.output_html_local,
+        "output_html_s3": args.output_html_s3,
+        "href_base_url": args.href_base_url,
+        "regex_exclude": args.exclude,
+        "overwrite": args.overwrite,
+        "upload": args.upload,
+        "cli": True
+    }
 
-# GUI mode
+    print(generate_html(input_data))
+
+
+def create_label_entry(root, text, row, default_value):
+    """ Create a label and an entry field """
+
+    ttk.Label(root, text=text).grid(row=row, column=0)
+    entry = ttk.Entry(root, width=50)
+    entry.grid(row=row, column=1)
+    entry.insert(0, default_value)
+    return entry
+
+
 def gui_mode():
+    """ GUI mode """
 
-    # When user click on Start button
     def on_start():
+        """ When user click on start button """
 
-        service_name = entry_service_name.get()
-        endpoint_url = entry_endpoint_url.get()
-        aws_access_key_id = entry_aws_access_key_id.get()
-        aws_secret_access_key = entry_aws_secret_access_key.get()
-        region_name = entry_region_name.get()
-        bucket_name = entry_bucket_name.get()
-        prefix = entry_prefix.get()
-        output_html_local = entry_output_html_local.get()
-        output_html_s3 = entry_output_html_s3.get()
-        href_base_url = entry_href_base_url.get()
-        regex_exclude = entry_regex_exclude.get()
-        overwrite = checkbox_overwrite_var.get()
-        upload = checkbox_upload_var.get()
-        cli = False
+        # Collect all input values into a dictionary
+        input_data = {
+            "service_name": entries["service_name"].get(),
+            "endpoint_url": entries["endpoint_url"].get(),
+            "aws_access_key_id": entries["aws_access_key_id"].get(),
+            "aws_secret_access_key": entries["aws_secret_access_key"].get(),
+            "region_name": entries["region_name"].get(),
+            "bucket_name": entries["bucket_name"].get(),
+            "prefix": entries["prefix"].get(),
+            "output_html_local": entries["output_html_local"].get(),
+            "output_html_s3": entries["output_html_s3"].get(),
+            "href_base_url": entries["href_base_url"].get(),
+            "regex_exclude": entries["regex_exclude"].get(),
+            "overwrite": checkbox_overwrite_var.get(),
+            "upload": checkbox_upload_var.get(),
+            "cli": False
+        }
 
-        result = generate_html(service_name, endpoint_url, aws_access_key_id, aws_secret_access_key, region_name, bucket_name, prefix, output_html_local, output_html_s3, href_base_url, regex_exclude, overwrite, upload, cli)
-        messagebox.showinfo("Result", result)
+        messagebox.showinfo("Info", generate_html(input_data))
 
-    # When user click on Upload checkbox
     def toggle_upload():
-        
+        """ Toggle entry output_html_s3 when user click on upload checkbox """
+
         if checkbox_upload_var.get():
-            entry_output_html_s3.config(state=tk.NORMAL) 
+            entries["output_html_s3"].config(state=tk.NORMAL)
         else:
-            entry_output_html_s3.config(state=tk.DISABLED) 
-     
-    # Create the main window
+            entries["output_html_s3"].config(state=tk.DISABLED)
+
+    def select_output_file():
+        """ Open the save file dialog """
+
+        file_path = filedialog.asksaveasfilename(
+            title="Output file",
+            defaultextension=".html",
+            filetypes=[("HTML files", "*.html"), ("All files", "*.*")]
+        )
+
+        if file_path:
+            # Clear the entry box and update it with the selected file path
+            entries["output_html_local"].delete(0, tk.END)
+            entries["output_html_local"].insert(0, file_path)
+
+    # Main window
     root = tk.Tk()
     root.configure(padx=10, pady=10)
     root.title("SLD : S3")
 
-    # Create and place labels and entry fields
-    tk.Label(root, text="Service name:").grid(row=0, column=0)
-    entry_service_name = tk.Entry(root, width=50)
-    entry_service_name.grid(row=0, column=1)
-    entry_service_name.insert(0, default_service_name)
+    # Create a style object
+    # style = ttk.Style()
+    # style.theme_use('default')
 
-    tk.Label(root, text="Endpoint URL:").grid(row=1, column=0)
-    entry_endpoint_url = tk.Entry(root, width=50)
-    entry_endpoint_url.grid(row=1, column=1)
-    entry_endpoint_url.insert(0, default_endpoint_url)
+    # Entries
+    entry_fields = [
+        (
+            "service_name",
+            "Service name :",
+            0,
+            DEFAULT_SERVICE_NAME
+        ),
+        (
+            "endpoint_url",
+            "Endpoint URL :",
+            1,
+            DEFAULT_ENDPOINT_URL
+        ),
+        (
+            "aws_access_key_id",
+            "Access key ID :",
+            2,
+            DEFAULT_AWS_ACCESS_KEY_ID
+        ),
+        (
+            "aws_secret_access_key",
+            "Secret access key :",
+            3,
+            DEFAULT_AWS_SECRET_ACCESS_KEY
+        ),
+        (
+            "region_name",
+            "Region (opt) :",
+            4,
+            DEFAULT_REGION_NAME
+        ),
+        (
+            "bucket_name",
+            "Bucket name :",
+            5,
+            DEFAULT_BUCKET_NAME
+        ),
+        (
+            "prefix",
+            "Prefix (opt) :",
+            6,
+            DEFAULT_PREFIX
+        ),
+        (
+            "output_html_local",
+            "Local Output HTML file :",
+            7,
+            DEFAULT_OUTPUT_HTML_LOCAL
+        ),
+        (
+            "output_html_s3",
+            "S3 Output HTML file :",
+            9,
+            DEFAULT_OUTPUT_HTML_S3
+        ),
+        (
+            "href_base_url",
+            "Href base URL (opt) :",
+            10,
+            DEFAULT_HREF_BASE_URL
+        ),
+        (
+            "regex_exclude",
+            "Regex exclude patterns (opt) :\nExample: .tmp, .old, backup_.*",
+            11,
+            DEFAULT_REGEX_EXCLUDE
+        )
+    ]
 
-    tk.Label(root, text="Access key ID:").grid(row=2, column=0)
-    entry_aws_access_key_id = tk.Entry(root, width=50)
-    entry_aws_access_key_id.grid(row=2, column=1)
-    entry_aws_access_key_id.insert(0, default_aws_access_key_id)
+    entries = {}
 
-    tk.Label(root, text="Secret access key:").grid(row=3, column=0)
-    entry_aws_secret_access_key = tk.Entry(root, width=50)
-    entry_aws_secret_access_key.grid(row=3, column=1)
-    entry_aws_secret_access_key.insert(0, default_aws_secret_access_key)
+    for entry_name, label_text, position, default_value in entry_fields:
+        entry = create_label_entry(root, label_text, position, default_value)
+        entries[entry_name] = entry
 
-    tk.Label(root, text="Region (opt):").grid(row=4, column=0)
-    entry_region_name = tk.Entry(root, width=50)
-    entry_region_name.grid(row=4, column=1)
-    entry_region_name.insert(0, default_region_name)
+    # Browse button
+    ttk.Button(
+        root,
+        text="browse...",
+        command=select_output_file
+    ).grid(row=8, column=1, sticky="w")
 
-    tk.Label(root, text="Bucket name:").grid(row=5, column=0)
-    entry_bucket_name = tk.Entry(root, width=50)
-    entry_bucket_name.grid(row=5, column=1)
-    entry_bucket_name.insert(0, default_bucket_name)
-    
-    tk.Label(root, text="Prefix (opt):").grid(row=6, column=0)
-    entry_prefix = tk.Entry(root, width=50)
-    entry_prefix.grid(row=6, column=1)
-    entry_prefix.insert(0, default_prefix)
+    # Overwrite checkbox
+    checkbox_overwrite_var = tk.BooleanVar(value=DEFAULT_OVERWRITE)
+    ttk.Checkbutton(
+        root,
+        text="Overwrite",
+        variable=checkbox_overwrite_var
+    ).grid(row=8, column=1)
 
-    tk.Label(root, text="Local Output HTML file:").grid(row=7, column=0)
-    global entry_output_html_local
-    entry_output_html_local = tk.Entry(root, width=50)
-    entry_output_html_local.grid(row=7, column=1)
-    entry_output_html_local.insert(0, default_output_html_local)
-    
-    btn_browse = tk.Button(root, text="browse...", command=output_file)
-    btn_browse.grid(row=8, column=1, sticky="w")
-    
-    checkbox_overwrite_var = tk.BooleanVar(value=default_overwrite)
-    checkbox_overwrite = tk.Checkbutton(root, text="Overwrite", variable=checkbox_overwrite_var)
-    checkbox_overwrite.grid(row=8, column=1)
-    
-    checkbox_upload_var = tk.BooleanVar(value=default_upload)
-    checkbox_upload = tk.Checkbutton(root, text="Upload to S3", variable=checkbox_upload_var, command=toggle_upload)
-    checkbox_upload.grid(row=8, column=1, sticky="e")
-    
-    tk.Label(root, text="S3 Output HTML file:").grid(row=9, column=0)
-    entry_output_html_s3 = tk.Entry(root, width=50)
-    entry_output_html_s3.grid(row=9, column=1)
-    entry_output_html_s3.insert(0, default_output_html_s3)
+    # Upload checkbox
+    checkbox_upload_var = tk.BooleanVar(value=DEFAULT_UPLOAD)
+    ttk.Checkbutton(
+        root,
+        text="Upload to S3",
+        variable=checkbox_upload_var,
+        command=toggle_upload
+    ).grid(row=8, column=1, sticky="e")
+
     toggle_upload()
-    
-    tk.Label(root, text="Href base URL (opt):").grid(row=10, column=0)
-    entry_href_base_url = tk.Entry(root, width=50)
-    entry_href_base_url.grid(row=10, column=1)
-    entry_href_base_url.insert(0, default_href_base_url)
-    
-    tk.Label(root, text="Regex exclude patterns (opt)\nExample: .tmp, .old, backup_.*").grid(row=11, column=0)
-    entry_regex_exclude = tk.Entry(root, width=50)
-    entry_regex_exclude.grid(row=11, column=1)
-    entry_regex_exclude.insert(0, default_regex_exclude)
-    
-    btn_generate = tk.Button(root, text=" Start ! ", command=on_start)
-    btn_generate.grid(row=12, column=1, sticky="e")
+
+    # Start button
+    ttk.Button(
+        root,
+        text=" Start ! ",
+        command=on_start
+    ).grid(row=12, column=1, sticky="e")
 
     # Start the GUI event loop
     root.mainloop()
 
-# Main entry point
+
+def boto3_availability(cli):
+    """ Show error message and quit if boto3 is missing """
+
+    message = (
+        "boto3 is not installed."
+        "\nHint ? You can install it with : pip install boto3"
+    )
+
+    if not BOTO3_AVAILABLE:
+        if cli:
+            print(message)
+        else:
+            messagebox.showerror("Error", message)
+        sys.exit(1)
+
+
 def main():
-    if len(sys.argv) > 1 or '--cli' in sys.argv:
+    """ Main entry point """
+
+    if DEFAULT_CLI or len(sys.argv) > 1 or '--cli' in sys.argv:
+        boto3_availability(True)
         cli_mode()
     else:
-        if tkinter_available:
+        if TKINTER_AVAILABLE:
+            boto3_availability(False)
             gui_mode()
         else:
-            print("GUI mode is not available, because tkinter is missing.\nUse CLI options: ye3sld --help")
+            print(
+                "GUI mode is not available, because tkinter is missing."
+                "\nHint ? Use CLI options: ye3sld --help"
+            )
             sys.exit(1)
+
 
 if __name__ == "__main__":
     main()
