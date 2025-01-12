@@ -2,6 +2,7 @@ name: Lint
 on:
   workflow_dispatch
 
+
 jobs:
   lint_and_build:
     runs-on: ubuntu-latest
@@ -23,7 +24,8 @@ jobs:
       - name: Run Pylint
         id: pylint
         run: |
-          pylint_score=$(pylint src/ye3sld/ye3sld.py | tee pylint_report.txt | grep 'Your code has been rated at' | awk '{print $7}')
+          pylint_output=$(pylint src/ye3sld/ye3sld.py | tee pylint_report.txt)
+          pylint_score=$(echo "$pylint_output" | grep 'Your code has been rated at' | awk '{print $7}')
           echo "Pylint score: $pylint_score"
           echo "pylint_score=$pylint_score" >> $GITHUB_ENV  # Set the pylint score as an environment variable
 
@@ -37,13 +39,11 @@ jobs:
 
       - name: Check Linting Results
         run: |
-          if [ "$pylint_score" != "10.00/10" ]; then
-            echo "Pylint score is not 10.00. Current score: $pylint_score"
-            exit 1
-          fi
-          if [ "$flake8_errors" -ne 0 ]; then
-            echo "Flake8 found $flake8_errors errors."
+          echo "Pylint score: ${{ env.pylint_score }}"
+          echo "Flake8 errors: ${{ env.flake8_errors }}"
+          
+          if [ "${{ env.pylint_score }}" != "10.00/10" ] || [ "${{ env.flake8_errors }}" -ne 0 ]; then
+            echo "Linting failed. Please fix the issues."
             exit 1
           fi
           echo "Linting passed successfully."
-
