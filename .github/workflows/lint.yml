@@ -37,7 +37,7 @@ jobs:
 
       - name: Check Linting Results
         run: |
-          if [ "$pylint_score" != "10.00" ]; then
+          if [ "$pylint_score" != "10.00/10" ]; then
             echo "Pylint score is not 10.00. Current score: $pylint_score"
             exit 1
           fi
