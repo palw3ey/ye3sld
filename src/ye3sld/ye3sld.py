@@ -138,12 +138,12 @@ def finalization(s3, params):
         ):
 
             message_exist_s3 = (
-                f"Upload canceled : {params["output_html_s3"]} "
+                f"Upload canceled : {params['output_html_s3']} "
                 "already exists in bucket."
             )
             if not params["cli"]:
                 response = messagebox.askyesno(
-                    "File Exists", f"{params["output_html_s3"]} "
+                    "File Exists", f"{params['output_html_s3']} "
                     "already exists in the bucket. "
                     "Do you want to overwrite it?"
                 )
@@ -160,13 +160,13 @@ def finalization(s3, params):
             params["bucket_name"],
             params["output_html_s3"]
         )
-        message_upload = f" and uploaded: {params["output_html_s3"]}"
+        message_upload = f" and uploaded: {params['output_html_s3']}"
     else:
         message_upload = ""
 
     return (
         f"Success : HTML file created: "
-        f"{params["output_html_local"]}{message_upload}"
+        f"{params['output_html_local']}{message_upload}"
     )
 
 
@@ -196,13 +196,13 @@ def generate_html(params):
     # Check if the local file already exists
     if os.path.exists(params["output_html_local"]) and not params["overwrite"]:
         message_exist_local = (
-            f"Operation canceled : {params["output_html_local"]} "
+            f"Operation canceled : {params['output_html_local']} "
             "already exists locally."
         )
         if not params["cli"]:
             response = messagebox.askyesno(
                 "File Exists",
-                f"{params["output_html_local"]} already exists locally. "
+                f"{params['output_html_local']} already exists locally. "
                 "Do you want to overwrite it?"
             )
             if not response:
@@ -325,7 +325,7 @@ def generate_html(params):
             ):
                 # Remove the bucket name prefix
                 relative_path = file.replace(
-                    f"{params["bucket_name"]}/",
+                    f"{params['bucket_name']}/",
                     "",
                     1
                 )
@@ -406,7 +406,7 @@ def generate_html(params):
             result.appendChild(folderList);
 
             // The url base to prepend to all href
-            const href_base_url = '""" + params["href_base_url"] + """';
+            const href_base_url = '""" + params['href_base_url'] + """';
 
             // Prepend the base to each link's href
             document.querySelectorAll('ul a').forEach(link => {
