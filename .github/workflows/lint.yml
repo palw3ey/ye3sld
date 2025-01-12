@@ -18,19 +18,19 @@ jobs:
       - name: Install dependencies
         run: |
           python -m pip install --upgrade pip
-          pip install pylint flake8  # Install pylint, flake8, and any other dependencies
+          pip install pylint flake8 
 
       - name: Run Pylint
         id: pylint
         run: |
-          pylint_score=$(pylint src/ye3sld/ye3sld.py | tee pylint_report.txt | grep 'Your code has been rated at' | awk '{print $7}')
+          pylint_score=$(pylint your_module_or_package | tee pylint_report.txt | grep 'Your code has been rated at' | awk '{print $7}')
           echo "Pylint score: $pylint_score"
-          echo "::set-output name=pylint_score::$pylint_score"
+          echo "pylint_score=$pylint_score" >> $GITHUB_ENV  # Set the pylint score as an environment variable
 
       - name: Run Flake8
         id: flake8
         run: |
-          flake8 src/ye3sld/ye3sld.py > flake8_report.txt || true
+          flake8 your_module_or_package > flake8_report.txt || true
           flake8_errors=$(cat flake8_report.txt | wc -l)
           echo "Flake8 errors: $flake8_errors"
-          echo "::set-output name=flake8_errors::$flake8_errors"
+          echo "flake8_errors=$flake8_errors" >> $GITHUB_ENV
