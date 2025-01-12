@@ -2,16 +2,6 @@ name: Lint
 on:
   workflow_dispatch
 
-name: Lint Check and Build
-
-on:
-  push:
-    branches:
-      - main
-  pull_request:
-    branches:
-      - main
-
 jobs:
   lint:
     runs-on: ubuntu-latest
