@@ -9,7 +9,8 @@ AWS_ACCESS_KEY_ID = os.getenv('ID')
 AWS_SECRET_ACCESS_KEY = os.getenv('SECRET')
 HREF_BASE_URL = os.getenv('BASE')
 ARGUMENTS = os.getenv('ARGUMENTS')
-        
+arg_list = shlex.split(ARGUMENTS)
+
 class TestExampleScript(unittest.TestCase):
     def test_script_output(self):
         # Run the script using subprocess
