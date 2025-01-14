@@ -23,6 +23,12 @@ jobs:
 
       - name: Run tests
         id: unittest
+        env:
+          URL: "${{ secrets.URL }}"
+          ID: "${{ secrets.ID }}"
+          SECRET: "${{ secrets.SECRET }}"
+          BASE: "${{ secrets.BASE }}"
+          ARGUMENTS: "${{ vars.ARGUMENTS }}"
         run: python -m unittest discover -s tests -p "*.py"
         
       - name: Run Pylint
