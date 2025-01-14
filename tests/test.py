@@ -4,7 +4,7 @@ import unittest
 import subprocess
 
 ENDPOINT_URL = os.getenv('URL')
-AWS_ACCESS_KEY_ID = os.getenv('KEY')
+AWS_ACCESS_KEY_ID = os.getenv('ID')
 AWS_SECRET_ACCESS_KEY = os.getenv('SECRET')
 HREF_BASE_URL = os.getenv('BASE')
 ARGUMENTS = os.getenv('ARGUMENTS')
