@@ -2,6 +2,7 @@
 import os
 import unittest
 import subprocess
+import shlex
 
 ENDPOINT_URL = os.getenv('URL')
 AWS_ACCESS_KEY_ID = os.getenv('ID')
@@ -18,7 +19,7 @@ class TestExampleScript(unittest.TestCase):
              "--aws_access_key_id", AWS_ACCESS_KEY_ID,
              "--aws_secret_access_key", AWS_SECRET_ACCESS_KEY,
              "--href_base_url", HREF_BASE_URL,
-             ARGUMENTS,
+             *arg_list
             ],
             capture_output=True,
             text=True
