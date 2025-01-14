@@ -21,6 +21,10 @@ jobs:
           python -m pip install --upgrade pip
           pip install build hatch twine pylint flake8
 
+      - name: Run tests
+        id: unittest
+        run: python -m unittest discover -s tests -p "*.py"
+        
       - name: Run Pylint
         id: pylint
         run: |
@@ -28,7 +32,7 @@ jobs:
           pylint_score=$(echo "$pylint_output" | grep 'Your code has been rated at' | awk '{print $7}')
           echo "Pylint score: $pylint_score"
           echo "pylint_score=$pylint_score" >> $GITHUB_ENV
-
+         
       - name: Run Flake8
         id: flake8
         run: |
