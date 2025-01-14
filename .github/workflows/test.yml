@@ -25,8 +25,8 @@ jobs:
       - name: Run Python script
         env:
           URL: "${{ secrets.URL }}"
-          KEY: "${{ secrets.KEY }}"
+          ID: "${{ secrets.ID }}"
           SECRET: "${{ secrets.SECRET }}"
           BASE: "${{ secrets.BASE }}"
-          ARGUMENTS: "${{ secrets.ARGUMENTS }}"
+          ARGUMENTS: "${{ vars.ARGUMENTS }}"
         run: python -m unittest discover -s tests -p "*.py"
